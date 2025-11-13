@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { ConnectButton } from '@mysten/dapp-kit';
 import {
   Zap,
@@ -161,7 +161,20 @@ const getSeasonalPrimaryButtonClasses = (): string => {
 
 export default function Home() {
   const account = useCurrentAccount();
-  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+  const client = useSuiClient();
+  const { mutate: signAndExecute } = useSignAndExecuteTransaction({
+    execute: async ({ bytes, signature }) =>
+      await client.executeTransactionBlock({
+        transactionBlock: bytes,
+        signature,
+        options: {
+          // 让钱包自动上报效果，同时直接返回事件/对象变更，避免等待索引
+          showRawEffects: true,
+          showEvents: true,
+          showObjectChanges: true,
+        },
+      }),
+  });
   const { t } = useI18n();
 
   const [playerNFT, setPlayerNFT] = useState<NFTMintedEvent | null>(null);
@@ -1129,15 +1142,8 @@ export default function Home() {
           onSuccess: async (result) => {
             console.log('战斗承诺提交成功:', result);
             try {
-              // 等待交易确认，确保事件/对象变更可用（使用 waitForTransaction）
-              await suiClient.waitForTransaction({ digest: result.digest });
-              const txResult = await suiClient.getTransactionBlock({
-                digest: result.digest,
-                options: { showEvents: true, showObjectChanges: true },
-              });
-
-              // 从事件中获取承诺地址（按地址揭示/取消）
-              const events = (txResult.events ?? []) as Array<{
+              // 优先从执行结果获取事件/对象变更，避免等待索引
+              const events = (result.events ?? []) as Array<{
                 type: string;
                 parsedJson?: Record<string, unknown>;
               }>;
@@ -1153,10 +1159,9 @@ export default function Home() {
                 : parsed?.commitmentId
                 ? String(parsed.commitmentId)
                 : '';
-
-              // 兜底：从对象变更中查找新建的 BattleCommitment 对象ID
+              // 兜底（第一层）：从执行结果的对象变更中查找新建的 BattleCommitment 对象ID
               if (!commitmentId) {
-                const objChangesUnknown = (txResult as { objectChanges?: unknown }).objectChanges;
+                const objChangesUnknown = (result as { objectChanges?: unknown }).objectChanges;
                 const objChanges = Array.isArray(objChangesUnknown)
                   ? (objChangesUnknown as Array<{ type?: string; objectType?: string; objectId?: string }>)
                   : [];
@@ -1169,6 +1174,47 @@ export default function Home() {
                 if (createdCommitment?.objectId) {
                   commitmentId = String(createdCommitment.objectId);
                   console.log('通过对象变更获取承诺ID:', commitmentId);
+                }
+              }
+              // 兜底（第二层）：短轮询等待节点完成索引后再读取
+              if (!commitmentId) {
+                const txResult = await suiClient.waitForTransaction({
+                  digest: result.digest,
+                  options: { showEvents: true, showObjectChanges: true },
+                  pollInterval: 250,
+                  timeout: 15000,
+                });
+                const events2 = (txResult.events ?? []) as Array<{
+                  type: string;
+                  parsedJson?: Record<string, unknown>;
+                }>;
+                const ev2 = events2.find((e) =>
+                  typeof e.type === 'string' && e.type.endsWith('::suu::BattleCommitmentCreatedEvent')
+                );
+                const parsed2 = ev2?.parsedJson as { commitment_id?: unknown; id?: unknown; commitmentId?: unknown } | undefined;
+                commitmentId = parsed2?.commitment_id
+                  ? String(parsed2.commitment_id)
+                  : parsed2?.id
+                  ? String(parsed2.id)
+                  : parsed2?.commitmentId
+                  ? String(parsed2.commitmentId)
+                  : '';
+
+                if (!commitmentId) {
+                  const objChangesUnknown2 = (txResult as { objectChanges?: unknown }).objectChanges;
+                  const objChanges2 = Array.isArray(objChangesUnknown2)
+                    ? (objChangesUnknown2 as Array<{ type?: string; objectType?: string; objectId?: string }>)
+                    : [];
+                  const createdCommitment2 = objChanges2.find(
+                    (oc) =>
+                      oc?.type === 'created' &&
+                      typeof oc?.objectType === 'string' &&
+                      oc.objectType.endsWith('::suu::BattleCommitment')
+                  );
+                  if (createdCommitment2?.objectId) {
+                    commitmentId = String(createdCommitment2.objectId);
+                    console.log('通过对象变更获取承诺ID:', commitmentId);
+                  }
                 }
               }
               if (commitmentId) {
@@ -1379,18 +1425,10 @@ export default function Home() {
         {
           onSuccess: async (result) => {
             console.log('抓捕承诺提交成功:', result);
-
-            // 获取承诺ID（添加延迟等待交易确认）
+            // 获取承诺ID：先用执行结果返回的事件/对象变更，必要时再短轮询兜底
             try {
-              // 等待交易确认后读取事件与对象变更
-              await suiClient.waitForTransaction({ digest: result.digest });
-              const txResult = await suiClient.getTransactionBlock({
-                digest: result.digest,
-                options: { showEvents: true, showObjectChanges: true },
-              });
-
               let commitmentId: string | undefined;
-              const events = (txResult.events ?? []) as Array<{
+              const events = (result.events ?? []) as Array<{
                 type: string;
                 parsedJson?: Record<string, unknown>;
               }>;
@@ -1442,8 +1480,8 @@ export default function Home() {
 
                 // 敌人信息保留在链上，无需刷新
               } else {
-                // 兜底：从对象变更中查找新建的 CaptureCommitment 对象ID
-                const objChangesUnknown = (txResult as { objectChanges?: unknown }).objectChanges;
+                // 兜底（第一层）：从对象变更中查找新建的 CaptureCommitment 对象ID
+                const objChangesUnknown = (result as { objectChanges?: unknown }).objectChanges;
                 const objChanges = Array.isArray(objChangesUnknown)
                   ? (objChangesUnknown as Array<{ type?: string; objectType?: string; objectId?: string }>)
                   : [];
@@ -1482,9 +1520,99 @@ export default function Home() {
                   console.log('提交时的等级:', playerNFT.level);
                   console.log('抓捕状态已保存在链上，敌人信息保留在NFT上');
                 } else {
-                  console.error('未能从任何方法获取承诺ID');
-                  console.error('交易详情:', JSON.stringify(txResult, null, 2));
-                  throw new Error('未能获取承诺ID');
+                  // 兜底（第二层）：短轮询等待节点完成索引后再读取
+                  const txResult = await suiClient.waitForTransaction({
+                    digest: result.digest,
+                    options: { showEvents: true, showObjectChanges: true },
+                    pollInterval: 250,
+                    timeout: 15000,
+                  });
+
+                  const events2 = (txResult.events ?? []) as Array<{
+                    type: string;
+                    parsedJson?: Record<string, unknown>;
+                  }>;
+                  const ev2 = events2.find(
+                    (e) => typeof e.type === 'string' && e.type.endsWith('::suu::CaptureCommitmentCreatedEvent')
+                  );
+                  const parsed2 = ev2?.parsedJson as { commitment_id?: unknown; id?: unknown; commitmentId?: unknown } | undefined;
+                  if (parsed2?.commitment_id || parsed2?.id || parsed2?.commitmentId) {
+                    commitmentId = parsed2?.commitment_id
+                      ? String(parsed2.commitment_id)
+                      : parsed2?.id
+                      ? String(parsed2.id)
+                      : parsed2?.commitmentId
+                      ? String(parsed2.commitmentId)
+                      : undefined;
+                    if (commitmentId) {
+                      console.log('从事件获取承诺地址:', commitmentId);
+                    }
+                  }
+
+                  if (commitmentId) {
+                    console.log('抓捕承诺ID:', commitmentId);
+                    const captureData = {
+                      commitmentId,
+                      secret,
+                      startTime: Date.now(),
+                      enemyLevel: enemyInfo.level,
+                      enemyElement: enemyInfo.element,
+                      commitLevel: playerNFT.level,
+                    };
+                    setCaptureCommitmentId(commitmentId);
+                    setCaptureSecret(secret);
+                    setCaptureStartTime(Date.now());
+                    setCaptureCommitLevel(playerNFT.level);
+                    localStorage.setItem(
+                      `capture_commitment_${playerNFT.nftId}`,
+                      JSON.stringify(captureData)
+                    );
+                    console.log('抓捕承诺已提交');
+                    console.log('承诺ID:', commitmentId);
+                    console.log('NFT ID:', playerNFT.nftId);
+                    console.log('提交时的等级:', playerNFT.level);
+                    console.log('抓捕状态已保存在链上，敌人信息保留在NFT上');
+                  } else {
+                    // 再次兜底：从对象变更中查找新建的 CaptureCommitment 对象ID
+                    const objChangesUnknown2 = (txResult as { objectChanges?: unknown }).objectChanges;
+                    const objChanges2 = Array.isArray(objChangesUnknown2)
+                      ? (objChangesUnknown2 as Array<{ type?: string; objectType?: string; objectId?: string }>)
+                      : [];
+                    const createdCommitment2 = objChanges2.find(
+                      (oc) =>
+                        oc?.type === 'created' &&
+                        typeof oc?.objectType === 'string' &&
+                        oc.objectType.endsWith('::suu::CaptureCommitment')
+                    );
+                    if (createdCommitment2?.objectId) {
+                      commitmentId = String(createdCommitment2.objectId);
+                      console.log('通过对象变更获取承诺ID:', commitmentId);
+                      const captureData = {
+                        commitmentId,
+                        secret,
+                        startTime: Date.now(),
+                        enemyLevel: enemyInfo.level,
+                        enemyElement: enemyInfo.element,
+                        commitLevel: playerNFT.level,
+                      };
+                      setCaptureCommitmentId(commitmentId);
+                      setCaptureSecret(secret);
+                      setCaptureStartTime(Date.now());
+                      setCaptureCommitLevel(playerNFT.level);
+                      localStorage.setItem(
+                        `capture_commitment_${playerNFT.nftId}`,
+                        JSON.stringify(captureData)
+                      );
+                      console.log('抓捕承诺已提交');
+                      console.log('承诺ID:', commitmentId);
+                      console.log('NFT ID:', playerNFT.nftId);
+                      console.log('提交时的等级:', playerNFT.level);
+                      console.log('抓捕状态已保存在链上，敌人信息保留在NFT上');
+                    } else {
+                      console.error('未能从任何方法获取承诺ID');
+                      throw new Error('未能获取承诺ID');
+                    }
+                  }
                 }
               }
             } catch (error) {
