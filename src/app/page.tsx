@@ -1129,9 +1129,11 @@ export default function Home() {
           onSuccess: async (result) => {
             console.log('战斗承诺提交成功:', result);
             try {
+              // 等待交易确认，确保事件/对象变更可用（使用 waitForTransaction）
+              await suiClient.waitForTransaction({ digest: result.digest });
               const txResult = await suiClient.getTransactionBlock({
                 digest: result.digest,
-                options: { showEvents: true },
+                options: { showEvents: true, showObjectChanges: true },
               });
 
               // 从事件中获取承诺地址（按地址揭示/取消）
@@ -1139,11 +1141,36 @@ export default function Home() {
                 type: string;
                 parsedJson?: Record<string, unknown>;
               }>;
-              const ev = events.find(
-                (e) => e.type === `${CONTRACT_PACKAGE_ID}::suu::BattleCommitmentCreatedEvent`
+              // 放宽事件匹配，避免因包ID不一致导致解析失败
+              const ev = events.find((e) =>
+                typeof e.type === 'string' && e.type.endsWith('::suu::BattleCommitmentCreatedEvent')
               );
-              const parsed = ev?.parsedJson as { commitment_id?: string } | undefined;
-              const commitmentId = parsed?.commitment_id ? String(parsed.commitment_id) : '';
+              const parsed = ev?.parsedJson as { commitment_id?: unknown; id?: unknown; commitmentId?: unknown } | undefined;
+              let commitmentId = parsed?.commitment_id
+                ? String(parsed.commitment_id)
+                : parsed?.id
+                ? String(parsed.id)
+                : parsed?.commitmentId
+                ? String(parsed.commitmentId)
+                : '';
+
+              // 兜底：从对象变更中查找新建的 BattleCommitment 对象ID
+              if (!commitmentId) {
+                const objChangesUnknown = (txResult as { objectChanges?: unknown }).objectChanges;
+                const objChanges = Array.isArray(objChangesUnknown)
+                  ? (objChangesUnknown as Array<{ type?: string; objectType?: string; objectId?: string }>)
+                  : [];
+                const createdCommitment = objChanges.find(
+                  (oc) =>
+                    oc?.type === 'created' &&
+                    typeof oc?.objectType === 'string' &&
+                    oc.objectType.endsWith('::suu::BattleCommitment')
+                );
+                if (createdCommitment?.objectId) {
+                  commitmentId = String(createdCommitment.objectId);
+                  console.log('通过对象变更获取承诺ID:', commitmentId);
+                }
+              }
               if (commitmentId) {
                 if (playerNFT) {
                   localStorage.setItem(`battle_secret_${playerNFT.nftId}`, secret);
@@ -1173,6 +1200,10 @@ export default function Home() {
               }
             } catch (error) {
               console.error('获取承诺ID失败:', error);
+              try {
+                // 输出更多诊断信息以便生产环境定位问题
+                console.log('交易摘要 digest:', result?.digest);
+              } catch {}
               showAlert('warning', t('alerts.settleBattleManually'), t('alerts.commitSubmittedNoId'));
             }
             setBattling(false);
