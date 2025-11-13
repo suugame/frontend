@@ -1577,16 +1577,13 @@ export default function Home() {
         <div className={`absolute top-1/2 left-1/2 w-48 h-48 ${decorations.center} rounded-full blur-3xl`}></div>
       </div>
 
-      {/* 顶部钱包连接和信息 */}
+      {/* 顶部语言与钱包连接（生产环境不显示网络标签，左右分隔） */}
       {!showLibrary && !showMarket && (
         <div className="absolute top-2 w-screen flex justify-between px-4 items-center gap-2 z-50">
-          {envConfig.suiNetwork === 'testnet' && (
-            <div className="bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm shadow-lg border border-white/10">
-              {envConfig.suiNetwork}
-            </div>
-          )}
-          <div className="flex items-center gap-2 scale-90 md:scale-100 origin-top-right">
+          <div className="flex items-center gap-2 scale-90 md:scale-100 origin-top-left">
             <LanguageSwitcher />
+          </div>
+          <div className="flex items-center gap-2 scale-90 md:scale-100 origin-top-right">
             <ConnectButton />
           </div>
         </div>

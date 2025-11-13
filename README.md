@@ -1,5 +1,7 @@
 SUU – Sui NFT Game (Frontend)
 
+（GitHub Pages）： https://suugame.github.io/frontend/
+
 This repository hosts the Next.js frontend of an on-chain NFT game built on Sui. It is fully non‑custodial and designed around collectible game items/artworks. There is no promise of profit or yield. See the in‑app Safety & Compliance page at `/safety`.
 
 Project structure (monorepo):
