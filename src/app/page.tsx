@@ -1382,10 +1382,11 @@ export default function Home() {
 
             // 获取承诺ID（添加延迟等待交易确认）
             try {
-              // 直接从事件读取承诺地址
+              // 等待交易确认后读取事件与对象变更
+              await suiClient.waitForTransaction({ digest: result.digest });
               const txResult = await suiClient.getTransactionBlock({
                 digest: result.digest,
-                options: { showEvents: true },
+                options: { showEvents: true, showObjectChanges: true },
               });
 
               let commitmentId: string | undefined;
@@ -1394,12 +1395,20 @@ export default function Home() {
                 parsedJson?: Record<string, unknown>;
               }>;
               const ev = events.find(
-                (e) => e.type === `${CONTRACT_PACKAGE_ID}::suu::CaptureCommitmentCreatedEvent`
+                (e) => typeof e.type === 'string' && e.type.endsWith('::suu::CaptureCommitmentCreatedEvent')
               );
-              const parsed = ev?.parsedJson as { commitment_id?: string } | undefined;
-              if (parsed?.commitment_id) {
-                commitmentId = String(parsed.commitment_id);
-                console.log('从事件获取承诺地址:', commitmentId);
+              const parsed = ev?.parsedJson as { commitment_id?: unknown; id?: unknown; commitmentId?: unknown } | undefined;
+              if (parsed?.commitment_id || parsed?.id || parsed?.commitmentId) {
+                commitmentId = parsed?.commitment_id
+                  ? String(parsed.commitment_id)
+                  : parsed?.id
+                  ? String(parsed.id)
+                  : parsed?.commitmentId
+                  ? String(parsed.commitmentId)
+                  : undefined;
+                if (commitmentId) {
+                  console.log('从事件获取承诺地址:', commitmentId);
+                }
               }
 
               if (commitmentId) {
@@ -1433,12 +1442,56 @@ export default function Home() {
 
                 // 敌人信息保留在链上，无需刷新
               } else {
-                console.error('未能从任何方法获取承诺ID');
-                console.error('交易详情:', JSON.stringify(txResult, null, 2));
-                throw new Error('未能获取承诺ID');
+                // 兜底：从对象变更中查找新建的 CaptureCommitment 对象ID
+                const objChangesUnknown = (txResult as { objectChanges?: unknown }).objectChanges;
+                const objChanges = Array.isArray(objChangesUnknown)
+                  ? (objChangesUnknown as Array<{ type?: string; objectType?: string; objectId?: string }>)
+                  : [];
+                const createdCommitment = objChanges.find(
+                  (oc) =>
+                    oc?.type === 'created' &&
+                    typeof oc?.objectType === 'string' &&
+                    oc.objectType.endsWith('::suu::CaptureCommitment')
+                );
+                if (createdCommitment?.objectId) {
+                  commitmentId = String(createdCommitment.objectId);
+                  console.log('通过对象变更获取承诺ID:', commitmentId);
+                  // 只保存必要的承诺信息到localStorage（敌人信息保留在链上）
+                  const captureData = {
+                    commitmentId,
+                    secret,
+                    startTime: Date.now(),
+                    enemyLevel: enemyInfo.level,
+                    enemyElement: enemyInfo.element,
+                    commitLevel: playerNFT.level,
+                  };
+
+                  setCaptureCommitmentId(commitmentId);
+                  setCaptureSecret(secret);
+                  setCaptureStartTime(Date.now());
+                  setCaptureCommitLevel(playerNFT.level);
+
+                  localStorage.setItem(
+                    `capture_commitment_${playerNFT.nftId}`,
+                    JSON.stringify(captureData)
+                  );
+
+                  console.log('抓捕承诺已提交');
+                  console.log('承诺ID:', commitmentId);
+                  console.log('NFT ID:', playerNFT.nftId);
+                  console.log('提交时的等级:', playerNFT.level);
+                  console.log('抓捕状态已保存在链上，敌人信息保留在NFT上');
+                } else {
+                  console.error('未能从任何方法获取承诺ID');
+                  console.error('交易详情:', JSON.stringify(txResult, null, 2));
+                  throw new Error('未能获取承诺ID');
+                }
               }
             } catch (error) {
               console.error('获取承诺ID失败:', error);
+              try {
+                console.log('交易摘要 digest:', result?.digest);
+              } catch {}
               showAlert('warning', t('alerts.settleCaptureManually'), t('alerts.commitSubmittedNoId'));
             }
             setCapturing(false);
