@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { createBuyNftTransaction, getUserBalance } from '@/sui';
 import { Message } from '@/components';
 import type { MessageType } from '@/components/Message';
@@ -20,7 +20,19 @@ export default function BuyNftButton({
   variant = 'primary' 
 }: BuyNftButtonProps) {
   const account = useCurrentAccount();
-  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+  const client = useSuiClient();
+  const { mutate: signAndExecute } = useSignAndExecuteTransaction({
+    execute: async ({ bytes, signature }) =>
+      await client.executeTransactionBlock({
+        transactionBlock: bytes,
+        signature,
+        options: {
+          showRawEffects: true,
+          showEvents: true,
+          showObjectChanges: true,
+        },
+      }),
+  });
   const { t } = useI18n();
   
   const [buying, setBuying] = useState(false);

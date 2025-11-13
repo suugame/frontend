@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import Clarity from '@microsoft/clarity';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,6 +19,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  useEffect(() => {
+    Clarity.init('u5c39vnoao');
+  }, []);
   return (
     <html lang="en">
       <head>

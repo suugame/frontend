@@ -1304,61 +1304,48 @@ export default function Home() {
           onSuccess: async (result) => {
             console.log('战斗结算成功:', result);
             setBattling(false);
-
-            // 添加重试机制获取战斗事件
-            const fetchBattleResult = async (retryCount = 0, maxRetries = 5) => {
-              try {
-                // 添加延迟，等待节点索引交易
-                await new Promise(resolve => setTimeout(resolve, 1000 + retryCount * 500));
-
-                const txResult = await suiClient.getTransactionBlock({
-                  digest: result.digest,
-                  options: { showEvents: true },
-                });
-
-                const battleEvent = txResult.events?.find(
-                  (event: { type?: string; parsedJson?: unknown }) => event.type?.includes('BattleEvent')
-                );
-
-                if (battleEvent && battleEvent.parsedJson) {
-                  const parsed = battleEvent.parsedJson as {
-                    is_win: boolean;
-                    experience_gained: string | number;
-                    level_increased: boolean;
-                    is_golden_monster: boolean;
-                    reward_amount: string | number;
-                  };
-
-                  const battleResultData = {
-                    isWin: Boolean(parsed.is_win),
-                    experienceGained: Number(parsed.experience_gained || 0),
-                    levelIncreased: Boolean(parsed.level_increased || false),
-                    isGoldenMonster: Boolean(parsed.is_golden_monster || false),
-                    rewardAmount: Number(parsed.reward_amount || 0),
-                  };
-
-                  setBattleResult(battleResultData);
-                  console.log('战斗结果:', battleResultData);
-
-                  setTimeout(() => {
-                    setBattleResult(null);
-                  }, 5000);
-                } else if (retryCount < maxRetries) {
-                  console.log(`未找到战斗事件，重试中... (${retryCount + 1}/${maxRetries})`);
-                  await fetchBattleResult(retryCount + 1, maxRetries);
-                }
-              } catch (error) {
-                if (retryCount < maxRetries) {
-                  console.log(`获取战斗事件失败，重试中... (${retryCount + 1}/${maxRetries})`, error);
-                  await fetchBattleResult(retryCount + 1, maxRetries);
-                } else {
-                  console.error('获取战斗事件失败（已达最大重试次数）:', error);
-                }
+            // 尝试从执行返回的事件中直接解析战斗结果
+            const tryParseBattle = (events: Array<{ type?: string; parsedJson?: unknown }>) => {
+              const ev = events?.find((e) => typeof e.type === 'string' && (e.type.endsWith('::suu::BattleEvent') || e.type.includes('BattleEvent')));
+              if (ev && ev.parsedJson) {
+                const parsed = ev.parsedJson as {
+                  is_win: boolean;
+                  experience_gained: string | number;
+                  level_increased: boolean;
+                  is_golden_monster: boolean;
+                  reward_amount: string | number;
+                };
+                const battleResultData = {
+                  isWin: Boolean(parsed.is_win),
+                  experienceGained: Number(parsed.experience_gained || 0),
+                  levelIncreased: Boolean(parsed.level_increased || false),
+                  isGoldenMonster: Boolean(parsed.is_golden_monster || false),
+                  rewardAmount: Number(parsed.reward_amount || 0),
+                };
+                setBattleResult(battleResultData);
+                console.log('战斗结果:', battleResultData);
+                setTimeout(() => setBattleResult(null), 5000);
+                return true;
               }
+              return false;
             };
 
-            // 开始获取战斗结果
-            fetchBattleResult();
+            const immediateEvents = (result as { events?: Array<{ type?: string; parsedJson?: unknown }> }).events || [];
+            const parsedImmediate = tryParseBattle(immediateEvents);
+            if (!parsedImmediate) {
+              try {
+                const txResult = await suiClient.waitForTransaction({
+                  digest: result.digest,
+                  options: { showEvents: true },
+                  pollInterval: 250,
+                  timeout: 15000,
+                });
+                const events2 = (txResult.events ?? []) as Array<{ type?: string; parsedJson?: unknown }>;
+                tryParseBattle(events2);
+              } catch (e) {
+                console.error('等待索引后获取战斗事件失败:', e);
+              }
+            }
 
             setBattleCommitmentId(null);
             setBattleSecret(null);
@@ -1676,82 +1663,81 @@ export default function Home() {
             setCaptureCommitLevel(null);
             localStorage.removeItem(`capture_commitment_${playerNFT.nftId}`);
 
-            // 获取抓捕结果事件
-            setTimeout(async () => {
+            const tryParseCapture = (events: Array<{ type?: string; parsedJson?: unknown }>) => {
+              const ev = events?.find((e) => typeof e.type === 'string' && (e.type.endsWith('::suu::CaptureAttemptEvent') || e.type.includes('CaptureAttemptEvent')));
+              if (ev && ev.parsedJson) {
+                const parsed = ev.parsedJson as {
+                  is_success: boolean;
+                  capture_probability: string | number;
+                };
+                const isSuccess = Boolean(parsed.is_success);
+                let displayProb = 0;
+                if (playerNFT && enemyInfo) {
+                  const playerLevelForDisplay = fullNFTInfo?.level ?? playerNFT.level;
+                  const winProb = calculateWinProbability(
+                    playerLevelForDisplay,
+                    playerNFT.element,
+                    enemyInfo.level,
+                    enemyInfo.element
+                  );
+                  const baseCaptureProb = winProb / 2;
+                  const isSameType = (fullNFTInfo?.monsterType ?? playerNFT.monsterType) === enemyInfo.monsterType;
+                  let afterBonus = baseCaptureProb;
+                  if (isSameType) afterBonus += 10;
+                  const levelPenaltyFactor = calculateCaptureLevelPenaltyFactor(playerLevelForDisplay);
+                  const finalCaptureProb = (afterBonus * (100 - levelPenaltyFactor)) / 100;
+                  displayProb = Math.min(Math.max(finalCaptureProb, 0), 100);
+                }
+                if (isSuccess && enemyInfo) {
+                  showAlert(
+                    'success',
+                    t('alerts.captureSuccessMessage'),
+                    t('alerts.captureSuccessTitle'),
+                    {
+                      level: enemyInfo.level,
+                      element: enemyInfo.element,
+                      monsterType: enemyInfo.monsterType,
+                      probability: displayProb,
+                    },
+                    true
+                  );
+                } else {
+                  showAlert(
+                    'error',
+                    t('alerts.captureFailDetail', { prob: Number(displayProb.toFixed(1)) }),
+                    t('alerts.captureFailTitle')
+                  );
+                }
+                return true;
+              }
+              return false;
+            };
+
+            const immediateEvents = (result as { events?: Array<{ type?: string; parsedJson?: unknown }> }).events || [];
+            const parsedImmediate = tryParseCapture(immediateEvents);
+            if (!parsedImmediate) {
               try {
-                const txResult = await suiClient.getTransactionBlock({
+                const txResult = await suiClient.waitForTransaction({
                   digest: result.digest,
                   options: { showEvents: true },
+                  pollInterval: 250,
+                  timeout: 15000,
                 });
-
-                const captureEvent = txResult.events?.find(
-                  (event: { type?: string }) => event.type?.includes('CaptureAttemptEvent')
-                );
-
-                if (captureEvent && captureEvent.parsedJson) {
-                  const parsed = captureEvent.parsedJson as {
-                    is_success: boolean;
-                    capture_probability: string | number;
-                  };
-
-                  const isSuccess = Boolean(parsed.is_success);
-
-                  // 为了与页面展示一致，这里按同一公式计算展示用概率（百分比 0-100）
-                  // 与面板一致：基础=战胜概率/2，+同类型10%，再应用等级惩罚
-                  let displayProb = 0;
-                  if (playerNFT && enemyInfo) {
-                    const playerLevelForDisplay = fullNFTInfo?.level ?? playerNFT.level;
-                    const winProb = calculateWinProbability(
-                      playerLevelForDisplay,
-                      playerNFT.element,
-                      enemyInfo.level,
-                      enemyInfo.element
-                    );
-                    const baseCaptureProb = winProb / 2;
-                    const isSameType = (fullNFTInfo?.monsterType ?? playerNFT.monsterType) === enemyInfo.monsterType;
-                    let afterBonus = baseCaptureProb;
-                    if (isSameType) afterBonus += 10;
-                    const levelPenaltyFactor = calculateCaptureLevelPenaltyFactor(playerLevelForDisplay);
-                    const finalCaptureProb = (afterBonus * (100 - levelPenaltyFactor)) / 100;
-                    displayProb = Math.min(Math.max(finalCaptureProb, 0), 100);
-                  }
-
-                  if (isSuccess && enemyInfo) {
-                    // 抓捕成功 - 显示详细的怪物信息（与面板一致的概率显示）
-                    showAlert(
-                      'success',
-                      t('alerts.captureSuccessMessage'),
-                      t('alerts.captureSuccessTitle'),
-                      {
-                        level: enemyInfo.level,
-                        element: enemyInfo.element,
-                        monsterType: enemyInfo.monsterType,
-                        probability: displayProb,
-                      },
-                      true
-                    );
-                  } else {
-                    // 抓捕失败
-                    showAlert(
-                      'error',
-                      t('alerts.captureFailDetail', { prob: Number(displayProb.toFixed(1)) }),
-                      t('alerts.captureFailTitle')
-                    );
-                  }
-                }
+                const events2 = (txResult.events ?? []) as Array<{ type?: string; parsedJson?: unknown }>;
+                tryParseCapture(events2);
               } catch (error) {
                 console.error('获取抓捕事件失败:', error);
               }
+            }
 
-              // 刷新NFT和敌人信息
-              setTimeout(async () => {
-                if (playerNFT) {
-                  console.log('刷新 NFT 和敌人信息...');
-                  await fetchUserNFT(false);
-                  console.log('NFT 和敌人信息已更新');
-                }
-              }, 3000);
-            }, 2000);
+            // 刷新NFT和敌人信息
+            setTimeout(async () => {
+              if (playerNFT) {
+                console.log('刷新 NFT 和敌人信息...');
+                await fetchUserNFT(false);
+                console.log('NFT 和敌人信息已更新');
+              }
+            }, 3000);
             setCapturing(false);
           },
           onError: (error) => {

@@ -22,7 +22,7 @@ import {
   suiClient,
   getUserBalance,
 } from '@/sui';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { AvatarDisplay, BuyNftButton, Message } from '@/components';
 import { useI18n } from '@/i18n/useI18n';
 import { getElementKey, getMonsterTypeName } from '@/utils/gameHelpers';
@@ -43,7 +43,19 @@ export default function BottomActions({
 }: BottomActionsProps) {
 
   const account = useCurrentAccount();
-  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+  const client = useSuiClient();
+  const { mutate: signAndExecute } = useSignAndExecuteTransaction({
+    execute: async ({ bytes, signature }) =>
+      await client.executeTransactionBlock({
+        transactionBlock: bytes,
+        signature,
+        options: {
+          showRawEffects: true,
+          showEvents: true,
+          showObjectChanges: true,
+        },
+      }),
+  });
   const { t } = useI18n();
 
   const [availableNFTs, setAvailableNFTs] = useState<HealthNFT[]>([]);
