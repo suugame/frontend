@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { useI18n } from "@/i18n/I18nProvider";
+import { envConfig } from "@/config/environment";
 
 export default function AboutPage() {
   const { t } = useI18n();
-  const explorer = "https://testnet.suiexplorer.com";
-  const contractPackageId =
-    "0x0d79b2bd27dc6b8c9aa528a97421b455981b786496e2b2799e38866f4d4ce704";
-  const contractObjectId =
-    "0x21b99edf5fc0cd8424e8c0f02eb51a0f06aac9c4ae0da6f0dbaf1895bf6be340";
-  const upgradeCapId =
-    "0x51171bb3168cf9c0e8c418393795fb2326cdbc9ccf82dcf0a0c8234b39005c6c";
-  const bankerAddress =
-    "0xbed3a24d91f2fb75ab90d6dfddbfc5f59a7a4b62f5779c1118dc22ab176fca44";
+  const network = envConfig.suiNetwork;
+  const explorer =
+    network === "mainnet"
+      ? "https://suiexplorer.com"
+      : network === "devnet"
+      ? "https://devnet.suiexplorer.com"
+      : "https://testnet.suiexplorer.com";
+
+  const contractPackageId = envConfig.contractPackageId;
+  const contractObjectId = envConfig.contractObjectId;
+  const bankerAddress = envConfig.bankerAddress;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10 space-y-8">
@@ -24,6 +27,7 @@ export default function AboutPage() {
           {" "}
           {t('about.learnLine2')}
         </p>
+        <p className="text-xs text-gray-500">Network: {network}</p>
       </header>
 
       <section className="space-y-3">
@@ -47,16 +51,6 @@ export default function AboutPage() {
               target="_blank"
             >
               {contractObjectId}
-            </Link>
-          </li>
-          <li>
-            UpgradeCap：
-            <Link
-              className="text-blue-600 hover:underline break-all"
-              href={`${explorer}/object/${upgradeCapId}`}
-              target="_blank"
-            >
-              {upgradeCapId}
             </Link>
           </li>
           <li>

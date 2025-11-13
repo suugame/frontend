@@ -46,8 +46,8 @@ export const getEnvironmentConfig = (): EnvironmentConfig => {
     if (suiNetwork === 'mainnet') {
       console.log('Using MAINNET contract addresses');
       return {
-        contractPackageId: '0xf5ed75abb7d627c9f58e6761f0a9c1c3c219472324e2e9554ab2d7c5f9834aab',
-        contractObjectId: '0x46adbab3b9c5bfcf2cec476fc0261ab1900c99aa8cd6d6c7ec22a3f4bd531973',
+        contractPackageId: '0x8ba4d7710351b6ef3044515d206625dc26116712eac155003e9813350fd46421',
+        contractObjectId: '0x56a57376fb68d041723b1119f5b9d7f6a1863c0331d0f215506f6e78ba5e4e14',
         bankerAddress: '0xbed3a24d91f2fb75ab90d6dfddbfc5f59a7a4b62f5779c1118dc22ab176fca44',
       };
     } else {
