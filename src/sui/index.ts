@@ -1330,6 +1330,95 @@ export async function getUserPendingBattleCommitments(
   }
 }
 
+// 获取用户的抓捕承诺（未揭示的）
+// 通过 CaptureCommitmentCreatedEvent 查询，再读取对象判断 is_revealed
+export interface CaptureCommitment {
+  id: string;
+  player: string;
+  nftId: number;
+  committedAt: number;
+  isRevealed: boolean;
+}
+
+export async function getUserPendingCaptureCommitments(
+  userAddress: string
+): Promise<CaptureCommitment[]> {
+  try {
+    console.log('Fetching pending capture commitments for user:', userAddress);
+
+    const events = await suiClient.queryEvents({
+      query: {
+        MoveEventType: `${CONTRACT_PACKAGE_ID}::suu::CaptureCommitmentCreatedEvent`,
+      },
+      limit: 100,
+      order: 'descending',
+    });
+
+    if (!events.data || events.data.length === 0) {
+      return [];
+    }
+
+    const userCommitmentInfos = events.data
+      .map((event) => {
+        const parsed = event.parsedJson as {
+          commitment_id?: string;
+          player?: string;
+          nft_id?: string | number;
+          timestamp?: string | number;
+        };
+        return {
+          commitmentId: String(parsed?.commitment_id ?? ''),
+          player: String(parsed?.player ?? ''),
+          nftId: Number(parsed?.nft_id ?? 0),
+          timestamp: Number(parsed?.timestamp ?? 0),
+        };
+      })
+      .filter((info) => info.player.toLowerCase() === userAddress.toLowerCase())
+      .filter((info) => !!info.commitmentId);
+
+    if (userCommitmentInfos.length === 0) {
+      return [];
+    }
+
+    const commitments: CaptureCommitment[] = [];
+
+    for (const info of userCommitmentInfos) {
+      try {
+        const obj = await suiClient.getObject({
+          id: info.commitmentId,
+          options: {
+            showContent: true,
+            showType: true,
+          },
+        });
+
+        if (obj.data && obj.data.content && 'fields' in obj.data.content) {
+          const fields = (obj.data.content as { fields?: Record<string, unknown> }).fields ?? {};
+          const isRevealed = Boolean((fields as { is_revealed?: boolean }).is_revealed || false);
+          if (!isRevealed) {
+            commitments.push({
+              id: info.commitmentId,
+              player: info.player,
+              nftId: Number((fields as { nft_id?: number | string }).nft_id ?? info.nftId),
+              committedAt: Number((fields as { committed_at?: number | string }).committed_at ?? info.timestamp),
+              isRevealed: false,
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching capture commitment ${info.commitmentId}:`, error);
+        // 忽略该条，继续处理下一条
+      }
+    }
+
+    console.log('Parsed pending capture commitments:', commitments);
+    return commitments;
+  } catch (error) {
+    console.error('Error fetching pending capture commitments:', error);
+    return [];
+  }
+}
+
 // ============================================
 // Banker Functions (已废弃的旧式 signer 函数)
 // ============================================

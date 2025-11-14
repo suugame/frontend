@@ -10,6 +10,7 @@ import {
   getFullNFTInfo,
   getActiveNFT,
   getUserPendingBattleCommitments,
+  getUserPendingCaptureCommitments,
   ListingPurchasedEvt,
   ListingCreatedEvt,
   ListingCancelledEvt,
@@ -121,6 +122,8 @@ export default function BottomActions({
 
   // 战斗中NFT集合（nftId -> true）
   const [battlingNFTs, setBattlingNFTs] = useState<Set<number>>(new Set());
+  // 抓捕中NFT集合（nftId -> true，基于链上未揭示的承诺）
+  const [capturingNFTs, setCapturingNFTs] = useState<Set<number>>(new Set());
 
   // Message 通知状态
   const [messageConfig, setMessageConfig] = useState<{
@@ -262,6 +265,27 @@ export default function BottomActions({
       } catch (error) {
         console.error('Error loading battle commitments:', error);
         if (mounted) setBattlingNFTs(new Set());
+      }
+    })();
+    return () => { mounted = false; };
+  }, [account?.address, marketEventsReloadTick]);
+
+  // refresh 抓捕中NFT状态（始终加载，不受面板开关影响）
+  useEffect(() => {
+    if (!account?.address) {
+      setCapturingNFTs(new Set());
+      return;
+    }
+    let mounted = true;
+    (async () => {
+      try {
+        const commitments = await getUserPendingCaptureCommitments(account.address);
+        if (!mounted) return;
+        const capturingSet = new Set(commitments.map(c => c.nftId));
+        setCapturingNFTs(capturingSet);
+      } catch (error) {
+        console.error('Error loading capture commitments:', error);
+        if (mounted) setCapturingNFTs(new Set());
       }
     })();
     return () => { mounted = false; };
@@ -688,18 +712,14 @@ export default function BottomActions({
     );
   }
 
-  // 判断某个NFT是否处于抓捕流程（通过本地保存的承诺信息）
+  // 判断某个NFT是否处于抓捕流程（基于链上承诺，避免本地存储误判）
   function isNftCapturing(nftId: number): boolean {
-    try {
-      return Boolean(localStorage.getItem(`capture_commitment_${nftId}`));
-    } catch {
-      return false;
-    }
+    return capturingNFTs.has(nftId);
   }
 
   async function onList(nftId: number) {
     if (!account) { showMessage('warning', t('common.connectWallet')); return; }
-    // 战斗或抓捕中不可上架
+    // 战斗或抓捕中不可上架（基于链上状态）
     if (battlingNFTs.has(nftId) || isNftCapturing(nftId)) {
       showMessage('warning', t('game.market.cannotListBattling'));
       return;
