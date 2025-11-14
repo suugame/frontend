@@ -714,17 +714,54 @@ export default function BottomActions({
     signAndExecute(
       { transaction: tx },
       {
-        onSuccess: () => {
-          showMessage('success', t('game.market.listSuccess'));
-          setListingLoading((m) => ({ ...m, [nftId]: false }));
-          // 当上架的是当前活跃的NFT，就设置为当前上架的NFT
-          if (_activeNft === nftId) {
-            window.dispatchEvent(new CustomEvent('nft:selected', { detail: { nftId } }));
+        onSuccess: async (res: { digest?: string } | unknown) => {
+          try {
+            const digest = (typeof res === 'object' && res && 'digest' in (res as Record<string, unknown>)) ? String((res as { digest?: string }).digest || '') : '';
+            if (digest) {
+              try {
+                await suiClient.waitForTransaction({ digest });
+                const detail = await suiClient.getTransactionBlock({ digest, options: { showEffects: true } });
+                const status = detail?.effects?.status?.status;
+                const isSuccess = status === 'success' || (
+                  detail && detail.effects && typeof detail.effects.status === 'object' &&
+                  'status' in detail.effects.status && (detail.effects.status as { status?: string }).status === 'success'
+                );
+                if (isSuccess) {
+                  showMessage('success', t('game.market.listSuccess'));
+                } else {
+                  const statusObj = detail?.effects?.status as { status?: string; error?: string } | undefined;
+                  const errorMsg = statusObj && typeof statusObj === 'object' && 'error' in statusObj ? statusObj.error : '';
+                  if (errorMsg) {
+                    showMessage('error', t('game.market.listFailPrefix') + ' ' + errorMsg);
+                  } else {
+                    showMessage('warning', t('game.market.txPending'));
+                  }
+                }
+              } catch (error) {
+                console.error('确认上架交易失败:', error);
+                showMessage('warning', t('game.market.txTimeout'));
+              }
+            } else {
+              // 没有 digest，说明仅提交成功，等待事件刷新
+              showMessage('info', t('game.market.txSubmitted'));
+            }
+          } finally {
+            setListingLoading((m) => ({ ...m, [nftId]: false }));
+            // 清空该 NFT 的价格输入，避免残留
+            setListingPriceInputs((prev) => {
+              const next = { ...prev };
+              delete next[nftId];
+              return next;
+            });
+            // 当上架的是当前活跃的NFT，就设置为当前上架的NFT
+            if (_activeNft === nftId) {
+              window.dispatchEvent(new CustomEvent('nft:selected', { detail: { nftId } }));
+            }
+            // 成功上链后刷新在售列表、我的可上架与事件（用于“我的已上架”）
+            refreshMarketPanels('listings');
+            refreshMarketPanels('myListables');
+            refreshMarketPanels('events');
           }
-          // 成功上架后刷新在售列表、我的可上架与事件（用于“我的已上架”）
-          refreshMarketPanels('listings');
-          refreshMarketPanels('myListables');
-          refreshMarketPanels('events');
         },
         onError: (err) => {
           console.error(err);
@@ -744,17 +781,47 @@ export default function BottomActions({
     signAndExecute(
       { transaction: tx },
       {
-        onSuccess: () => {
-          showMessage('success', t('game.market.delistSuccess'));
-          // 假如当前没有活跃的NFT，就设置为当前下架的NFT
-          if (!_activeNft) {
-            window.dispatchEvent(new CustomEvent('nft:selected', { detail: { nftId } }));
+        onSuccess: async (res: { digest?: string } | unknown) => {
+          try {
+            const digest = (typeof res === 'object' && res && 'digest' in (res as Record<string, unknown>)) ? String((res as { digest?: string }).digest || '') : '';
+            if (digest) {
+              try {
+                await suiClient.waitForTransaction({ digest });
+                const detail = await suiClient.getTransactionBlock({ digest, options: { showEffects: true } });
+                const status = detail?.effects?.status?.status;
+                const isSuccess = status === 'success' || (
+                  detail && detail.effects && typeof detail.effects.status === 'object' &&
+                  'status' in detail.effects.status && (detail.effects.status as { status?: string }).status === 'success'
+                );
+                if (isSuccess) {
+                  showMessage('success', t('game.market.delistSuccess'));
+                } else {
+                  const statusObj = detail?.effects?.status as { status?: string; error?: string } | undefined;
+                  const errorMsg = statusObj && typeof statusObj === 'object' && 'error' in statusObj ? statusObj.error : '';
+                  if (errorMsg) {
+                    showMessage('error', t('game.market.delistFailPrefix') + ' ' + errorMsg);
+                  } else {
+                    showMessage('warning', t('game.market.txPending'));
+                  }
+                }
+              } catch (error) {
+                console.error('确认下架交易失败:', error);
+                showMessage('warning', t('game.market.txTimeout'));
+              }
+            } else {
+              showMessage('info', t('game.market.txSubmitted'));
+            }
+          } finally {
+            // 假如当前没有活跃的NFT，就设置为当前下架的NFT
+            if (!_activeNft) {
+              window.dispatchEvent(new CustomEvent('nft:selected', { detail: { nftId } }));
+            }
+            setDelistingLoading((m) => ({ ...m, [nftId]: false }));
+            // 成功下架后刷新在售列表、我的可上架与事件（用于“我的已上架”）
+            refreshMarketPanels('listings');
+            refreshMarketPanels('myListables');
+            refreshMarketPanels('events');
           }
-          setDelistingLoading((m) => ({ ...m, [nftId]: false }));
-          // 成功下架后刷新在售列表、我的可上架与事件（用于“我的已上架”）
-          refreshMarketPanels('listings');
-          refreshMarketPanels('myListables');
-          refreshMarketPanels('events');
         },
         onError: (err) => {
           console.error(err);
