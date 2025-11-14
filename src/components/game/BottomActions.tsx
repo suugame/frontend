@@ -174,6 +174,15 @@ export default function BottomActions({
 
   // 使用钱包连接地址
 
+  // 确认对话框状态与方法
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; resolve?: (confirmed: boolean) => void }>({ open: false, message: '' });
+
+  function showConfirm(message: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      setConfirmDialog({ open: true, message, resolve });
+    });
+  }
+
   // refresh library data
   useEffect(() => {
     console.log(showLibrary, 'showLibrary')
@@ -739,8 +748,8 @@ export default function BottomActions({
           // 链上标记存在，但未查询到承诺对象，尝试继续上架（若失败再提示）
           console.warn('has_active_commitment=true，但未找到承诺对象，尝试继续上架');
         } else {
-          const _str = t('game.market.confirmCancelCommitments')
-          const confirmCancel = window.confirm(_str);
+          const _str = t('game.market.confirmCancelCommitments');
+          const confirmCancel = await showConfirm(_str);
           if (!confirmCancel) {
             showMessage('warning', t('game.market.cannotListBattling'));
             setListingLoading((m) => ({ ...m, [nftId]: false }));
@@ -1434,6 +1443,27 @@ export default function BottomActions({
             <div className="text-sm break-words">{fullNameView.text}</div>
           </div>
         </div>
+      )}
+      {confirmDialog.open && (
+        <dialog className="modal" open>
+          <div className="modal-box bg-white text-black dark:bg-neutral-800 dark:text-white">
+            <h3 className="font-bold text-lg mb-3">{t('common.confirm')}</h3>
+            <p className="py-2 whitespace-pre-wrap break-words text-sm">{confirmDialog.message}</p>
+            <div className="modal-action">
+              <button
+                className="btn btn-ghost"
+                onClick={() => { try { confirmDialog.resolve?.(false); } finally { setConfirmDialog({ open: false, message: '' }); } }}
+              >{t('common.cancel')}</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => { try { confirmDialog.resolve?.(true); } finally { setConfirmDialog({ open: false, message: '' }); } }}
+              >{t('common.confirm')}</button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button onClick={() => { try { confirmDialog.resolve?.(false); } finally { setConfirmDialog({ open: false, message: '' }); } }}>close</button>
+          </form>
+        </dialog>
       )}
     </>
   );

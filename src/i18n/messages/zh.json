@@ -23,6 +23,8 @@
     "inUse": "使用中",
     "select": "选择",
     "setting": "设置中...",
+    "confirm": "确认",
+    "cancel": "取消",
     "unit": { "hourShort": "小时", "minuteShort": "分钟", "secondShort": "秒" }
   },
   "elements": {
@@ -356,8 +358,9 @@
       "fetchListingHistoryFailPrefix": "加载挂单历史NFT信息失败:",
       "refreshNftListFailPrefix": "刷新NFT列表失败:",
       "setActiveFailPrefix": "设置当前使用的NFT失败:",
-      "cannotListBattling": "该NFT正在战斗或抓捕流程中，暂不可上架",
-      "enterValidPrice": "请输入有效价格（SUI）",
+    "cannotListBattling": "该NFT正在战斗或抓捕流程中，暂不可上架",
+    "confirmCancelCommitments": "检测到该NFT存在未揭示的战斗/抓捕承诺，是否取消并继续上架？",
+    "enterValidPrice": "请输入有效价格（SUI）",
       "listSuccess": "上架成功",
       "listFailPrefix": "上架失败:",
       "statusSold": "已成交",

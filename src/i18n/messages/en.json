@@ -23,6 +23,8 @@
     "inUse": "In Use",
     "select": "Select",
     "setting": "Setting...",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
     "unit": { "hourShort": "h", "minuteShort": "min", "secondShort": "s" }
   },
   "elements": {
@@ -356,8 +358,9 @@
       "fetchListingHistoryFailPrefix": "Failed to load listing history NFTs:",
       "refreshNftListFailPrefix": "Failed to refresh NFT list:",
       "setActiveFailPrefix": "Set active NFT failed:",
-      "cannotListBattling": "NFT is in battle or capture, cannot list",
-      "enterValidPrice": "Please enter a valid price (SUI)",
+    "cannotListBattling": "NFT is in battle or capture, cannot list",
+    "confirmCancelCommitments": "This NFT has pending battle/capture commitments. Cancel them and continue listing?",
+    "enterValidPrice": "Please enter a valid price (SUI)",
       "listSuccess": "Listing created",
       "listFailPrefix": "Listing failed:",
       "statusSold": "Sold",
