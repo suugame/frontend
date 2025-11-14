@@ -719,8 +719,24 @@ export default function BottomActions({
 
   async function onList(nftId: number) {
     if (!account) { showMessage('warning', t('common.connectWallet')); return; }
-    // 战斗或抓捕中不可上架（基于链上状态）
-    if (battlingNFTs.has(nftId) || isNftCapturing(nftId)) {
+    // 战斗或抓捕中不可上架（优先使用NFT本身的 active_commitment 状态）
+    const targetNft = myListableNFTs.find((n) => n.nftId === nftId);
+    // 二次确认：即时从链上刷新承诺状态，避免缓存导致的误判
+    let isBattleActive = battlingNFTs.has(nftId);
+    let isCaptureActive = isNftCapturing(nftId);
+    try {
+      if (account?.address) {
+        const [battleCommitments, captureCommitments] = await Promise.all([
+          getUserPendingBattleCommitments(account.address).catch(() => []),
+          getUserPendingCaptureCommitments(account.address).catch(() => []),
+        ]);
+        isBattleActive = battleCommitments.some((c) => c.nftId === nftId);
+        isCaptureActive = captureCommitments.some((c) => c.nftId === nftId);
+      }
+    } catch {}
+    const hasActiveCommitment = Boolean(targetNft?.has_active_commitment);
+    console.log('[List Check]', { nftId, hasActiveCommitment, isBattleActive, isCaptureActive });
+    if (hasActiveCommitment || isBattleActive || isCaptureActive) {
       showMessage('warning', t('game.market.cannotListBattling'));
       return;
     }

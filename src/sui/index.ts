@@ -411,6 +411,7 @@ export interface HealthNFT {
   currentEnemy: EnemyInfo | null;
   lastEnemyGeneratedAt: number;
   is_listed: boolean; // 是否已上架到市场
+  has_active_commitment: boolean; // 是否有未揭示的战斗/抓捕承诺
   nftId: number;  // NFT在合约中的ID
 }
 
@@ -847,6 +848,7 @@ export async function getNFT(
       currentEnemy: currentEnemy,
       lastEnemyGeneratedAt: currentEnemy?.generatedAt || 0,
       is_listed: false, // 默认未上架
+      has_active_commitment: false, // 默认无承诺标记（需基于链上对象实时判断）
       nftId: nftId,
     };
   } catch (error) {
@@ -1067,6 +1069,10 @@ export async function getFullNFTInfo(nftId: number): Promise<HealthNFT | null> {
     const isListed = readBool(nftBytes, offset);
     offset += 1;
 
+    // 12. has_active_commitment (bool, 1字节)
+    const hasActiveCommitment = readBool(nftBytes, offset);
+    offset += 1;
+
     const nftInfo: HealthNFT = {
       id: `nft-${nftId}`,
       owner,
@@ -1080,6 +1086,7 @@ export async function getFullNFTInfo(nftId: number): Promise<HealthNFT | null> {
       currentEnemy,
       lastEnemyGeneratedAt,
       is_listed: isListed,
+      has_active_commitment: hasActiveCommitment,
       nftId,
     };
 
