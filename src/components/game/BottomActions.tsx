@@ -739,7 +739,8 @@ export default function BottomActions({
           // 链上标记存在，但未查询到承诺对象，尝试继续上架（若失败再提示）
           console.warn('has_active_commitment=true，但未找到承诺对象，尝试继续上架');
         } else {
-          const confirmCancel = window.confirm(t('game.market.confirmCancelCommitments'));
+          const _str = t('game.market.confirmCancelCommitments')
+          const confirmCancel = window.confirm(_str);
           if (!confirmCancel) {
             showMessage('warning', t('game.market.cannotListBattling'));
             setListingLoading((m) => ({ ...m, [nftId]: false }));
@@ -756,7 +757,7 @@ export default function BottomActions({
                     onSuccess: async (res: { digest?: string } | unknown) => {
                       const digest = (typeof res === 'object' && res && 'digest' in (res as Record<string, unknown>)) ? String((res as { digest?: string }).digest || '') : '';
                       if (digest) {
-                        try { await suiClient.waitForTransaction({ digest }); } catch {}
+                        try { await suiClient.waitForTransaction({ digest }); } catch { }
                       }
                       showMessage('success', t('game.market.cancelCaptureSuccess'));
                       resolve();
@@ -770,7 +771,7 @@ export default function BottomActions({
                   }
                 );
               });
-            } catch {}
+            } catch { }
           }
           for (const bat of pendingBattle) {
             try {
@@ -782,7 +783,7 @@ export default function BottomActions({
                     onSuccess: async (res: { digest?: string } | unknown) => {
                       const digest = (typeof res === 'object' && res && 'digest' in (res as Record<string, unknown>)) ? String((res as { digest?: string }).digest || '') : '';
                       if (digest) {
-                        try { await suiClient.waitForTransaction({ digest }); } catch {}
+                        try { await suiClient.waitForTransaction({ digest }); } catch { }
                       }
                       showMessage('success', t('game.market.cancelBattleSuccess'));
                       resolve();
@@ -796,7 +797,7 @@ export default function BottomActions({
                   }
                 );
               });
-            } catch {}
+            } catch { }
           }
 
           // 取消后刷新状态并再次检查
@@ -1303,23 +1304,23 @@ export default function BottomActions({
                               <div className="shrink-0 mb-1">
                                 <AvatarDisplay name={nft.name} element={nft.element} monsterType={nft.monsterType} size={64} />
                               </div>
-                          <div className="text-center mb-2">
-                            <div
-                              className="text-sm font-semibold text-blue-400 leading-snug truncate"
-                              title={nft.name || `NFT #${listing.nftId}`}
-                              onMouseDown={(e) => startLongPress(nft.name || `NFT #${listing.nftId}`, e)}
-                              onMouseUp={cancelLongPress}
-                              onMouseLeave={cancelLongPress}
-                              onTouchStart={(e) => startLongPress(nft.name || `NFT #${listing.nftId}`, e)}
-                              onTouchEnd={cancelLongPress}
-                            >
-                              {nft.name || `NFT #${listing.nftId}`}
-                            </div>
-                            <div className="text-[11px] text-white/90">{t('common.price')}: {(listing.price / 1e9).toFixed(4)} SUI</div>
-                            <div className="text-[11px] text-white/80">{t('common.element')}: {t('elements.' + getElementKey(nft.element))}</div>
-                            <div className="text-[11px] text-white/80">{t('common.type')}: {getMonsterTypeName(nft.monsterType)}</div>
-                            <div className="text-[11px] text-white/80">{t('common.seller')}: {listing.seller.slice(0, 6)}...{listing.seller.slice(-4)}</div>
-                          </div>
+                              <div className="text-center mb-2">
+                                <div
+                                  className="text-sm font-semibold text-blue-400 leading-snug truncate"
+                                  title={nft.name || `NFT #${listing.nftId}`}
+                                  onMouseDown={(e) => startLongPress(nft.name || `NFT #${listing.nftId}`, e)}
+                                  onMouseUp={cancelLongPress}
+                                  onMouseLeave={cancelLongPress}
+                                  onTouchStart={(e) => startLongPress(nft.name || `NFT #${listing.nftId}`, e)}
+                                  onTouchEnd={cancelLongPress}
+                                >
+                                  {nft.name || `NFT #${listing.nftId}`}
+                                </div>
+                                <div className="text-[11px] text-white/90">{t('common.price')}: {(listing.price / 1e9).toFixed(4)} SUI</div>
+                                <div className="text-[11px] text-white/80">{t('common.element')}: {t('elements.' + getElementKey(nft.element))}</div>
+                                <div className="text-[11px] text-white/80">{t('common.type')}: {getMonsterTypeName(nft.monsterType)}</div>
+                                <div className="text-[11px] text-white/80">{t('common.seller')}: {listing.seller.slice(0, 6)}...{listing.seller.slice(-4)}</div>
+                              </div>
                               <button
                                 className={`w-full px-2.5 py-1.5 rounded-md text-xs font-medium whitespace-nowrap ${isMe ? 'bg-gray-600 text-white cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white'} disabled:opacity-50`}
                                 onClick={() => onBuyListed(listing.nftId, listing.price, listing.seller)}
@@ -1420,9 +1421,9 @@ export default function BottomActions({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
       {fullNameView && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
