@@ -22,6 +22,8 @@ import {
   getListingInfo,
   suiClient,
   getUserBalance,
+  createCancelBattleCommitmentTransaction,
+  createCancelCaptureCommitmentTransaction,
 } from '@/sui';
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { AvatarDisplay, BuyNftButton, Message } from '@/components';
@@ -719,26 +721,87 @@ export default function BottomActions({
 
   async function onList(nftId: number) {
     if (!account) { showMessage('warning', t('common.connectWallet')); return; }
-    // 战斗或抓捕中不可上架（优先使用NFT本身的 active_commitment 状态）
-    const targetNft = myListableNFTs.find((n) => n.nftId === nftId);
-    // 二次确认：即时从链上刷新承诺状态，避免缓存导致的误判
-    let isBattleActive = battlingNFTs.has(nftId);
-    let isCaptureActive = isNftCapturing(nftId);
-    try {
-      if (account?.address) {
+    // 上架前仅以链上最新状态判断，避免事件集合误拦截
+    const latestNft = await getFullNFTInfo(nftId).catch(() => null);
+    const hasActiveCommitment = latestNft?.has_active_commitment === true;
+    console.log('[List Check]', { nftId, hasActiveCommitment });
+    if (hasActiveCommitment) {
+      try {
         const [battleCommitments, captureCommitments] = await Promise.all([
-          getUserPendingBattleCommitments(account.address).catch(() => []),
-          getUserPendingCaptureCommitments(account.address).catch(() => []),
+          getUserPendingBattleCommitments((account.address || '')), // may return []
+          getUserPendingCaptureCommitments((account.address || '')), // may return []
         ]);
-        isBattleActive = battleCommitments.some((c) => c.nftId === nftId);
-        isCaptureActive = captureCommitments.some((c) => c.nftId === nftId);
+        const pendingBattle = battleCommitments.filter((c) => c.nftId === nftId);
+        const pendingCapture = captureCommitments.filter((c) => c.nftId === nftId);
+        if (pendingBattle.length === 0 && pendingCapture.length === 0) {
+          // 链上标记存在，但未查询到承诺对象，尝试继续上架（若失败再提示）
+          console.warn('has_active_commitment=true，但未找到承诺对象，尝试继续上架');
+        } else {
+          const confirmCancel = window.confirm(t('game.market.confirmCancelCommitments'));
+          if (!confirmCancel) {
+            showMessage('warning', t('game.market.cannotListBattling'));
+            return;
+          }
+          // 顺序取消抓捕与战斗承诺
+          for (const cap of pendingCapture) {
+            try {
+              const txCancelCap = createCancelCaptureCommitmentTransaction(cap.id, nftId);
+              await new Promise<void>((resolve, reject) => {
+                signAndExecute(
+                  { transaction: txCancelCap },
+                  {
+                    onSuccess: async (res: { digest?: string } | unknown) => {
+                      const digest = (typeof res === 'object' && res && 'digest' in (res as Record<string, unknown>)) ? String((res as { digest?: string }).digest || '') : '';
+                      if (digest) {
+                        try { await suiClient.waitForTransaction({ digest }); } catch {}
+                      }
+                      showMessage('success', t('game.market.cancelCaptureSuccess'));
+                      resolve();
+                    },
+                    onError: (err) => { console.error('取消抓捕承诺失败:', err); showMessage('error', t('game.market.cancelCaptureFailPrefix') + ' ' + (err?.message || t('game.buyNft.unknown'))); reject(err as Error); },
+                  }
+                );
+              });
+            } catch {}
+          }
+          for (const bat of pendingBattle) {
+            try {
+              const txCancelBat = createCancelBattleCommitmentTransaction(bat.id, nftId);
+              await new Promise<void>((resolve, reject) => {
+                signAndExecute(
+                  { transaction: txCancelBat },
+                  {
+                    onSuccess: async (res: { digest?: string } | unknown) => {
+                      const digest = (typeof res === 'object' && res && 'digest' in (res as Record<string, unknown>)) ? String((res as { digest?: string }).digest || '') : '';
+                      if (digest) {
+                        try { await suiClient.waitForTransaction({ digest }); } catch {}
+                      }
+                      showMessage('success', t('game.market.cancelBattleSuccess'));
+                      resolve();
+                    },
+                    onError: (err) => { console.error('取消战斗承诺失败:', err); showMessage('error', t('game.market.cancelBattleFailPrefix') + ' ' + (err?.message || t('game.buyNft.unknown'))); reject(err as Error); },
+                  }
+                );
+              });
+            } catch {}
+          }
+
+          // 取消后刷新状态并再次检查
+          setMarketEventsReloadTick((x) => x + 1);
+          setMyListablesReloadTick((x) => x + 1);
+          const recheck = await getFullNFTInfo(nftId).catch(() => null);
+          const stillActive = recheck?.has_active_commitment === true;
+          console.log('[List Recheck]', { nftId, stillActive });
+          if (stillActive) {
+            showMessage('warning', t('game.market.cannotListBattling'));
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('检查/取消承诺失败:', err);
+        showMessage('error', t('game.market.cancelCheckFailPrefix') + ' ' + ((err && typeof err === 'object' && 'message' in err) ? String((err).message) : t('game.buyNft.unknown')));
+        return;
       }
-    } catch {}
-    const hasActiveCommitment = Boolean(targetNft?.has_active_commitment);
-    console.log('[List Check]', { nftId, hasActiveCommitment, isBattleActive, isCaptureActive });
-    if (hasActiveCommitment || isBattleActive || isCaptureActive) {
-      showMessage('warning', t('game.market.cannotListBattling'));
-      return;
     }
     const input = listingPriceInputs[nftId];
     const mist = suiToMistInput(input);
