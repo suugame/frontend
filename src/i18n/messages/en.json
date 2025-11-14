@@ -50,7 +50,7 @@
   ,
   "game": {
     "enemyCard": {
-      "goldMonster": "Golden Monster",
+      "goldMonster": "Golden",
       "enemy": "Enemy",
       "enemyLevel": "Enemy Lv.{level}",
       "cooling": "Cooling",
@@ -63,7 +63,7 @@
     "battleResult": {
       "win": "Victory!",
       "lose": "Defeat",
-      "goldenMonster": "Golden Monster",
+      "goldenMonster": "Golden",
       "reward": "Reward",
       "exp": "Experience",
       "levelUp": "Level Up!",
