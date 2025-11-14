@@ -720,7 +720,9 @@ export default function BottomActions({
   }
 
   async function onList(nftId: number) {
-    if (!account) { showMessage('warning', t('common.connectWallet')); return; }
+    // 立即进入“上架中”状态，提升点击反馈
+    setListingLoading((m) => ({ ...m, [nftId]: true }));
+    if (!account) { showMessage('warning', t('common.connectWallet')); setListingLoading((m) => ({ ...m, [nftId]: false })); return; }
     // 上架前仅以链上最新状态判断，避免事件集合误拦截
     const latestNft = await getFullNFTInfo(nftId).catch(() => null);
     const hasActiveCommitment = latestNft?.has_active_commitment === true;
@@ -740,6 +742,7 @@ export default function BottomActions({
           const confirmCancel = window.confirm(t('game.market.confirmCancelCommitments'));
           if (!confirmCancel) {
             showMessage('warning', t('game.market.cannotListBattling'));
+            setListingLoading((m) => ({ ...m, [nftId]: false }));
             return;
           }
           // 顺序取消抓捕与战斗承诺
@@ -758,7 +761,12 @@ export default function BottomActions({
                       showMessage('success', t('game.market.cancelCaptureSuccess'));
                       resolve();
                     },
-                    onError: (err) => { console.error('取消抓捕承诺失败:', err); showMessage('error', t('game.market.cancelCaptureFailPrefix') + ' ' + (err?.message || t('game.buyNft.unknown'))); reject(err as Error); },
+                    onError: (err: unknown) => {
+                      console.error('取消抓捕承诺失败:', err);
+                      const msg = (err && typeof err === 'object' && 'message' in err) ? String((err as { message?: unknown }).message ?? '') : '';
+                      showMessage('error', t('game.market.cancelCaptureFailPrefix') + ' ' + (msg || t('game.buyNft.unknown')));
+                      reject(err as Error);
+                    },
                   }
                 );
               });
@@ -779,7 +787,12 @@ export default function BottomActions({
                       showMessage('success', t('game.market.cancelBattleSuccess'));
                       resolve();
                     },
-                    onError: (err) => { console.error('取消战斗承诺失败:', err); showMessage('error', t('game.market.cancelBattleFailPrefix') + ' ' + (err?.message || t('game.buyNft.unknown'))); reject(err as Error); },
+                    onError: (err: unknown) => {
+                      console.error('取消战斗承诺失败:', err);
+                      const msg = (err && typeof err === 'object' && 'message' in err) ? String((err as { message?: unknown }).message ?? '') : '';
+                      showMessage('error', t('game.market.cancelBattleFailPrefix') + ' ' + (msg || t('game.buyNft.unknown')));
+                      reject(err as Error);
+                    },
                   }
                 );
               });
@@ -794,19 +807,21 @@ export default function BottomActions({
           console.log('[List Recheck]', { nftId, stillActive });
           if (stillActive) {
             showMessage('warning', t('game.market.cannotListBattling'));
+            setListingLoading((m) => ({ ...m, [nftId]: false }));
             return;
           }
         }
       } catch (err) {
         console.error('检查/取消承诺失败:', err);
-        showMessage('error', t('game.market.cancelCheckFailPrefix') + ' ' + ((err && typeof err === 'object' && 'message' in err) ? String((err).message) : t('game.buyNft.unknown')));
+        const msg = (err && typeof err === 'object' && 'message' in err) ? String((err as { message?: unknown }).message ?? '') : '';
+        showMessage('error', t('game.market.cancelCheckFailPrefix') + ' ' + (msg || t('game.buyNft.unknown')));
+        setListingLoading((m) => ({ ...m, [nftId]: false }));
         return;
       }
     }
     const input = listingPriceInputs[nftId];
     const mist = suiToMistInput(input);
-    if (mist === null) { showMessage('warning', t('game.market.enterValidPrice')); return; }
-    setListingLoading((m) => ({ ...m, [nftId]: true }));
+    if (mist === null) { showMessage('warning', t('game.market.enterValidPrice')); setListingLoading((m) => ({ ...m, [nftId]: false })); return; }
     const tx = createListNftTransaction(nftId, mist);
     const effectiveAddress = account?.address || '';
     const _activeNft = await getActiveNFT(effectiveAddress);
@@ -862,9 +877,10 @@ export default function BottomActions({
             refreshMarketPanels('events');
           }
         },
-        onError: (err) => {
+        onError: (err: unknown) => {
           console.error(err);
-          showMessage('error', t('game.market.listFailPrefix') + ' ' + (err.message || t('game.buyNft.unknown')));
+          const msg = (err && typeof err === 'object' && 'message' in err) ? String((err as { message?: unknown }).message ?? '') : '';
+          showMessage('error', t('game.market.listFailPrefix') + ' ' + (msg || t('game.buyNft.unknown')));
           setListingLoading((m) => ({ ...m, [nftId]: false }));
         },
       }
